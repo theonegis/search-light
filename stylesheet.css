@@ -45,16 +45,22 @@
   color: black;
 }
 
+#searchLightBox > StEntry,
+#searchLightBox > StEntry:hover,
 #searchLightBox > StEntry:focus,
-#searchLightBox > StEntry {
-  padding: 18px!important;
-	margin-top: 0px !important;
-  margin-bottom: 20px !important;
-	border-radius: 8px;
-  border: 0px !important;
-  border-width: 0px !important;
-  background: rgba(0,0,0,0);
-  /*font-size: 14pt !important;*/
+#searchLightBox > StEntry:active,
+#searchLight .search-entry,
+#searchLight .search-entry:hover,
+#searchLight .search-entry:focus {
+  padding: 14px 16px !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  border-width: 0 !important;
+  box-shadow: none !important;
+  background: none !important;
+  background-color: transparent !important;
+  background-image: none !important;
 }
 
 #searchLightBox .app-well-app {

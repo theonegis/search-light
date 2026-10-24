@@ -51,6 +51,7 @@ var SearchLight = GObject.registerClass(
       super._init();
       this.name = 'searchLight';
       this.offscreen_redirect = Clutter.OffscreenRedirect.ALWAYS;
+      this.clip_to_allocation = true;
       this.layout_manager = new Clutter.BinLayout();
     }
   },
@@ -585,23 +586,50 @@ export default class SearchLightExt extends Extension {
     this.container.set_size(this.width, this.initial_height);
     this.mainContainer.set_size(this.width, this.initial_height);
     this.mainContainer.set_position(x, y);
+    this._fitBackground(this.width, this.initial_height);
+  }
 
-    // background
-    if (this._background) {
-      if (this._bgActor) {
-        this._bgActor.set_position(this.monitor.x - x, this.monitor.y - y);
-        this._bgActor.set_size(this.monitor.width, this.monitor.height);
-        this._bgActor
-          .get_parent()
-          .set_size(this.monitor.width, this.monitor.height);
-      }
-      let padding = 0; //this.border_thickness || 0;
-      this._background.set_position(padding, padding);
-      this._background.set_size(
-        this.monitor.width - padding * 2,
-        this.monitor.height - padding * 2,
+  _cornerRadius() {
+    const rads = [0, 16, 18, 20, 22, 24, 28, 32];
+    const idx = Math.floor(this.border_radius ?? 0);
+    return rads[idx] || 0;
+  }
+
+  _fitBackground(width, height) {
+    if (!this._background || !width || !height) return;
+
+    this._background.set_position(0, 0);
+    this._background.set_size(width, height);
+
+    if (this._bgActor) {
+      this._bgActor.set_position(
+        this.monitor.x - this.mainContainer.x,
+        this.monitor.y - this.mainContainer.y,
       );
+      this._bgActor.set_size(this.monitor.width, this.monitor.height);
+      this._bgActor.get_parent().set_size(this.monitor.width, this.monitor.height);
     }
+
+    if (
+      !(
+        this.blur_background &&
+        this.desktop_background_blurred &&
+        this.monitor
+      )
+    ) {
+      return;
+    }
+
+    const x = this.mainContainer.x - this.monitor.x;
+    const y = this.mainContainer.y - this.monitor.y;
+    const radius = this._cornerRadius();
+    this._background.style = [
+      `background-image: url("${this.desktop_background_blurred}");`,
+      `background-size: ${this.monitor.width}px ${this.monitor.height}px;`,
+      `background-position: ${-x}px ${-y}px;`,
+      `background-repeat: no-repeat;`,
+      `border-radius: ${radius}px;`,
+    ].join(' ');
   }
 
   _updateShortcut(disable) {
@@ -737,6 +765,7 @@ export default class SearchLightExt extends Extension {
       () => {
         this.container.set_size(this.width, this.height);
         this.mainContainer.set_size(this.width, this.height);
+        this._fitBackground(this.width, this.height);
         if (this._corners) {
           this._corners[2].y = this.height - this._corners[1].height;
           this._corners[3].y = this.height - this._corners[1].height;
@@ -804,10 +833,15 @@ export default class SearchLightExt extends Extension {
       }
     }
 
-    this._background.remove_effect_by_name('blur');
     if (this._blurEffect && this.blur_background) {
-      this._background.add_effect_with_name('blur', this._blurEffect);
+      if (!this._blurAttached) {
+        this._background.add_effect_with_name('blur', this._blurEffect);
+        this._blurAttached = true;
+      }
       this._blurEffect.color = bg;
+    } else if (this._blurAttached) {
+      this._background.remove_effect_by_name('blur');
+      this._blurAttached = false;
     }
 
     this._background.visible = true;
@@ -830,47 +864,38 @@ export default class SearchLightExt extends Extension {
         ss.push(`\n  border: ${this.border_thickness}px solid rgba(${clr});`);
       }
 
-      styles.push(`#searchLight {${ss.join(' ')}}`);
+      styles.push(`#searchLight {
+  background-color: transparent;
+  box-shadow: none;
+}`);
       styles.push(`#searchLightBlurredBackground {${ss.join(' ')}}`);
     }
 
-    // ss.push(`\n background-image: url("${bg}");`);
-    if (
-      this.blur_background &&
-      this.desktop_background_blurred &&
-      this.monitor
-    ) {
-      let sw = this.monitor.width;
-      let sh = this.monitor.height;
-      let ss = [];
-      // ss.push(`\n background-image: url("${BLURRED_BG_PATH}");`);
-      ss.push(
-        `\n background-image: url("${this.desktop_background_blurred}");`,
-      );
-      ss.push(`\n background-size: ${sw}px ${sh}px;`);
-      ss.push(`\n background-position: top center;`);
-      // ss.push(`\n border: 2px solid red;`);
-      this._background.style = ss.join(' ');
-
-      // styles.push(`#searchLightBlurredBackground {${ss.join(' ')}}`);
-      // styles.push(`#searchLight {${ss.join(' ')}}`);
-    } else {
-      this._background.style = '';
-    }
+    if (!this.blur_background) this._background.style = '';
 
     {
-      if (this.border_radius !== null) {
-        let rads = [0, 16, 18, 20, 22, 24, 28, 32];
-        let r = rads[Math.floor(this.border_radius)];
-        if (r) {
-          let st = `StBoxLayout.search-section-content { border-radius: ${r}px !important; }`;
-          st = '#searchLightBlurredBackgroundImage,\n' + st; // has no effect
-          st = '#searchLightBlurredBackground,\n' + st; // has no effect
-          st = '#searchLightBox,\n' + st;
-          st = '#searchLight,\n' + st;
-          styles.push(st);
-        }
+      const r = this._cornerRadius();
+      if (r) {
+        let st = `StBoxLayout.search-section-content { border-radius: ${r}px !important; }`;
+        st = '#searchLightBlurredBackgroundImage,\n' + st;
+        st = '#searchLightBlurredBackground,\n' + st;
+        st = '#searchLightBox,\n' + st;
+        st = '#searchLight,\n' + st;
+        styles.push(st);
       }
+      styles.push(`#searchLightBox > StEntry,
+#searchLightBox > StEntry:hover,
+#searchLightBox > StEntry:focus,
+#searchLight .search-entry,
+#searchLight .search-entry:hover,
+#searchLight .search-entry:focus {
+  margin: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border-radius: ${r}px !important;
+}`);
     }
 
     if (this.font_size !== null) {
@@ -907,6 +932,8 @@ export default class SearchLightExt extends Extension {
 
     // console.log(styles);
     this._style.build('custom-search-light', styles);
+    if (this.mainContainer?.width)
+      this._fitBackground(this.mainContainer.width, this.mainContainer.height);
   }
 
   _toggle_search_light() {
